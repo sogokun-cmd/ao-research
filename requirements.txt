@@ -1,0 +1,16 @@
+fastapi==0.135.2
+uvicorn[standard]==0.42.0
+python-dotenv==1.2.2
+pydantic==2.12.5
+python-multipart==0.0.22
+
+# 認証
+python-jose[cryptography]==3.5.0
+bcrypt==5.0.0
+cryptography==46.0.6
+
+# HTTP クライアント
+httpx==0.28.1
+
+# AI
+anthropic==0.86.0
