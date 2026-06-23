@@ -49,7 +49,8 @@ async def get_google_user_info(access_token: str) -> dict:
         return r.json()
 
 
-def get_or_create_google_user(google_id: str, email: str, name: str, picture: str = "") -> dict:
+def get_or_create_google_user(google_id: str, email: str, name: str, picture: str = "") -> tuple[dict, bool]:
+    """返り値: (user_dict, is_new)"""
     from database import get_db
     db = get_db()
     try:
@@ -59,14 +60,14 @@ def get_or_create_google_user(google_id: str, email: str, name: str, picture: st
             if picture and row["picture"] != picture:
                 db.execute("UPDATE users SET picture = ? WHERE id = ?", (picture, row["id"]))
                 db.commit()
-            return dict(db.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone())
+            return dict(db.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone()), False
 
         # 同メールアドレスのアカウントに google_id を紐付け
         row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if row:
             db.execute("UPDATE users SET google_id = ?, picture = ? WHERE id = ?", (google_id, picture, row["id"]))
             db.commit()
-            return dict(db.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone())
+            return dict(db.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone()), False
 
         # 新規ユーザー作成
         cur = db.execute(
@@ -74,6 +75,6 @@ def get_or_create_google_user(google_id: str, email: str, name: str, picture: st
             (name, email, google_id, picture),
         )
         db.commit()
-        return {"id": cur.lastrowid, "name": name, "email": email, "plan": "free", "usage_count": 0, "picture": picture}
+        return {"id": cur.lastrowid, "name": name, "email": email, "plan": "free", "usage_count": 0, "picture": picture}, True
     finally:
         db.close()

@@ -9,7 +9,7 @@
 import secrets
 from urllib.parse import quote
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from auth.deps import COOKIE_KEY
@@ -24,6 +24,7 @@ _MAX_AGE = 30 * 24 * 3600  # 30日
 
 @router.post("/register")
 async def do_register(
+    background_tasks: BackgroundTasks,
     name:     str = Form(...),
     email:    str = Form(...),
     password: str = Form(...),
@@ -31,6 +32,8 @@ async def do_register(
     try:
         user  = register_user(name.strip(), email.strip().lower(), password)
         token = create_token(user["id"], user["email"], user["plan"], user["name"])
+        from core.email import send_welcome_email
+        background_tasks.add_task(send_welcome_email, user["name"], user["email"])
         resp  = RedirectResponse(url="/", status_code=303)
         resp.set_cookie(COOKIE_KEY, token, max_age=_MAX_AGE, httponly=True, samesite="lax")
         return resp
@@ -68,7 +71,7 @@ async def google_login():
 
 
 @router.get("/callback")
-async def google_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+async def google_callback(request: Request, background_tasks: BackgroundTasks, code: str = "", state: str = "", error: str = ""):
     if error:
         return RedirectResponse(
             url=f"/login?error={quote('Googleログインがキャンセルされました')}",
@@ -84,7 +87,7 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
     try:
         tokens    = await exchange_code(code)
         user_info = await get_google_user_info(tokens["access_token"])
-        user      = get_or_create_google_user(
+        user, is_new = get_or_create_google_user(
             google_id = user_info["id"],
             email     = user_info["email"],
             name      = user_info.get("name", user_info["email"]),
@@ -95,6 +98,10 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
             url=f"/login?error={quote('Googleログインに失敗しました: ' + str(exc)[:40])}",
             status_code=303,
         )
+
+    if is_new:
+        from core.email import send_welcome_email
+        background_tasks.add_task(send_welcome_email, user["name"], user["email"])
 
     token = create_token(user["id"], user["email"], user.get("plan", "free"), user.get("name", ""))
     resp  = RedirectResponse(url="/", status_code=303)
